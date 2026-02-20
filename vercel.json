@@ -1,0 +1,11 @@
+{
+    "buildCommand": "cd client && npm install && npm run build",
+    "outputDirectory": "client/dist",
+    "installCommand": "npm install",
+    "functions": {
+        "api/*.ts": {
+            "memory": 1024,
+            "maxDuration": 60
+        }
+    }
+}

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.vercel/
+*.log
+settings.json
+server/uploads/
+.env
+.DS_Store
+Thumbs.db
