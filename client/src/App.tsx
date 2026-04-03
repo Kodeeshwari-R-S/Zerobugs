@@ -64,7 +64,7 @@ function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }>
         reader.onload = () => {
             const dataUrl = reader.result as string;
             const [header, base64] = dataUrl.split(',');
-            const mimeType = header.match(/data:(.*?);/)?.[1] || 'image/png';
+            const mimeType = header.match(/data:(.*?);/)?.[1] || file.type || 'application/octet-stream';
             resolve({ base64, mimeType });
         };
         reader.onerror = reject;
@@ -108,7 +108,7 @@ function DropZone({
             e.preventDefault();
             setDragOver(false);
             const droppedFile = e.dataTransfer.files[0];
-            if (droppedFile && droppedFile.type.startsWith('image/')) {
+            if (droppedFile) {
                 onFileDrop(droppedFile);
             }
         },
@@ -118,7 +118,7 @@ function DropZone({
     const handleFileInput = useCallback(
         (e: React.ChangeEvent<HTMLInputElement>) => {
             const selected = e.target.files?.[0];
-            if (selected && selected.type.startsWith('image/')) {
+            if (selected) {
                 onFileDrop(selected);
             }
         },
@@ -129,9 +129,13 @@ function DropZone({
         return (
             <div className="dropzone-wrapper">
                 <div className="preview-container">
-                    <img src={preview} alt="Bug screenshot" className="preview-image" />
+                    {file.type.startsWith('image/') ? (
+                        <img src={preview} alt="Bug file" className="preview-image" />
+                    ) : (
+                        <div className="preview-document" style={{ fontSize: '48px', padding: '40px', textAlign: 'center', background: '#f5f5f5', borderRadius: '8px' }}>📄</div>
+                    )}
                     <div className="preview-overlay">
-                        <button className="remove-btn" onClick={onRemove} title="Remove screenshot">
+                        <button className="remove-btn" onClick={onRemove} title="Remove file">
                             ✕
                         </button>
                     </div>
@@ -162,11 +166,11 @@ function DropZone({
                         <line x1="12" y1="3" x2="12" y2="15" />
                     </svg>
                 </div>
-                <p className="dropzone-text">Drag & drop your bug screenshot here</p>
+                <p className="dropzone-text">Drag & drop your bug file or screenshot here</p>
                 <p className="dropzone-hint">
-                    or <span>browse files</span> · PNG, JPG, GIF up to 20MB
+                    or <span>browse files</span> or <strong>paste (Ctrl+V)</strong> · Any file up to 20MB
                 </p>
-                <input ref={inputRef} type="file" accept="image/*" onChange={handleFileInput} style={{ display: 'none' }} />
+                <input ref={inputRef} type="file" onChange={handleFileInput} style={{ display: 'none' }} />
             </div>
         </div>
     );
@@ -570,15 +574,53 @@ export default function App() {
         setJiraResult(null);
     }, [preview]);
 
+    useEffect(() => {
+        const handlePaste = (e: ClipboardEvent) => {
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+                return;
+            }
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].kind === 'file') {
+                    const blob = items[i].getAsFile();
+                    if (blob) {
+                        handleFileDrop(blob);
+                        return;
+                    }
+                }
+            }
+        };
+        document.addEventListener('paste', handlePaste);
+        return () => document.removeEventListener('paste', handlePaste);
+    }, [handleFileDrop]);
+
     const saveSettings = () => {
         saveSettingsToStorage(settings);
     };
 
     const handleAnalyze = async () => {
         if (!file || !imageData) {
-            addToast('error', 'Please upload a screenshot first');
+            addToast('error', 'Please upload a file first');
             return;
         }
+
+        if (!file.type.startsWith('image/')) {
+            addToast('info', 'AI analysis is only supported for images. You can manually fill the report.');
+            setBugReport({
+                title: file.name ? `Bug Report: ${file.name}` : 'Bug Report',
+                description: notes || 'Attached a file for review.',
+                stepsToReproduce: [''],
+                expectedBehavior: '',
+                actualBehavior: '',
+                severity: 'Major',
+                priority: 'Medium',
+                environment: '',
+                additionalNotes: '',
+            });
+            return;
+        }
+
         if (!settings.groqApiKey) {
             addToast('error', 'Please set your Groq API key in Settings');
             setShowSettings(true);
